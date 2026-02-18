@@ -57,11 +57,23 @@ the Go module download cache layout (`download/` tree with `.zip`, `.info`, and 
 files per module).
 
 ```sh
-# Locate the go.mod (run from the repo root)
-find . -name "go.mod"
 
-# cd into that directory, then download all modules
+# Optional but recommended: Clear your cache first so we don't pack gigabytes of old junk from other projects!
+go clean -modcache
+
+# 1. Download the root modules
 go mod download
+
+# 2. Download the app proxy modules
+cd fluxer_app/proxy
+go mod download
+
+# 3. Download the app scripts modules
+cd ../scripts
+go mod download
+
+# Go back to the root of the source folder
+cd ../..
 
 # Archive only the download/ subdirectory — this is what GOPROXY=file:// expects
 tar -czf /path/to/flathub/go-module-cache.tar.gz \
