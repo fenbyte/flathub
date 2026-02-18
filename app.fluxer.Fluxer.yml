@@ -1,31 +1,102 @@
 id: app.fluxer.Fluxer
 runtime: org.freedesktop.Platform
-runtime-version: '25.08'
+runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 base: org.electronjs.Electron2.BaseApp
-base-version: '25.08'
+base-version: "25.08"
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node24
+  - org.freedesktop.Sdk.Extension.golang
 command: app.fluxer.Fluxer
 finish-args:
-  - '--share=ipc'
-  - '--socket=wayland'
-  - '--socket=fallback-x11'
-  - '--socket=pulseaudio'
-  - '--share=network'
-  - '--device=all'
-  - '--filesystem=xdg-run/pipewire-0:ro'
-  - '--filesystem=xdg-run/speech-dispatcher'
-  - '--env=ELECTRON_OZONE_PLATFORM_HINT=auto'
-  - '--env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons'
+  - "--share=ipc"
+  - "--socket=wayland"
+  - "--socket=fallback-x11"
+  - "--socket=pulseaudio"
+  - "--share=network"
+  - "--device=all"
+  - "--filesystem=xdg-run/pipewire-0:ro"
+  - "--filesystem=xdg-run/speech-dispatcher"
+  - "--env=ELECTRON_OZONE_PLATFORM_HINT=auto"
+  - "--env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons"
+build-options:
+  append-path: /usr/lib/sdk/node24/bin:/app/bin:/usr/lib/sdk/golang/bin
+  env:
+    NPM_CONFIG_LOGLEVEL: info
 
 modules:
-  - name: fluxer
+  # I was using the freedesktop rust-stable, but wasm blocked it due to write perms so yeah :/
+  - name: rust-toolchain
+    buildsystem: simple
+    build-options:
+      strip: false
+      no-debuginfo: true
     sources:
       - type: archive
-        url: https://api.fluxer.app/dl/desktop/stable/linux/x64/fluxer-stable-0.0.8-x64.tar.gz
-        sha256: acf6398fa6810720fed85b06c011b324e7db4fec6bf2fc7ad93c2446c3600f2d
-        dest: fluxer
-        only-arches:
-          - x86_64
+        url: https://static.rust-lang.org/dist/rust-1.84.1-x86_64-unknown-linux-gnu.tar.gz
+        sha256: 106c89f23ce1c763fcbea8e2714b2ba869bf7af70804813987a4483896398933
+        strip-components: 0
+      - type: archive
+        url: https://static.rust-lang.org/dist/rust-std-1.84.1-wasm32-unknown-unknown.tar.gz
+        sha256: ded2f8aafed0f126d3a04a449c4e75f9d50abefeb5833ac6c7ae1142f1660549
+        strip-components: 0
+    build-commands:
+      - ./rust-1.84.1-x86_64-unknown-linux-gnu/install.sh --prefix=/app --disable-ldconfig
+      - ./rust-std-1.84.1-wasm32-unknown-unknown/install.sh --prefix=/app --disable-ldconfig
+
+  - name: fluxer
+    buildsystem: simple
+    build-options:
+      cflags: -O2 -g
+      cxxflags: -O2 -g
+      env:
+        NODE_ENV: production
+        npm_config_tarball: /run/build/fluxer/node-headers.tar.gz
+        ELECTRON_CACHE: /run/build/fluxer/electron-cache
+        LD_LIBRARY_PATH: /app/lib
+        GOFLAGS: "-mod=mod"
+        GOPROXY: "file:///run/build/fluxer/go-module-cache,off"
+        GONOSUMDB: "*"
+        GONOSUMCHECK: "*"
+
+    sources:
+      # download the whole repo from github / LFS bypass
+      - type: archive
+        url: https://github.com/fluxerapp/fluxer/archive/cb31608.tar.gz
+        sha256: 10230d0154c05ac096a7689a3694253d250f4fae0c0c379dd4c6170d1cd77855
+      - type: archive
+        path: pnpm-offline-store.tar.gz
+        dest: pnpm-offline-cache
+      # Manually download pnpm binary
+      - type: file
+        url: https://github.com/pnpm/pnpm/releases/download/v10.26.0/pnpm-linux-x64
+        sha256: 9610a7389ed89c1bea815e273a754fadb236d259f4ff7c7f3ac4d7f1922c2791
+        dest-filename: pnpm-binary
+      - type: file
+        # Manually get mac headers
+        url: https://www.electronjs.org/headers/v39.2.7/node-v39.2.7-headers.tar.gz
+        sha256: 70395b88591386c168ea14fe48bdbb334f59cf38db0f28f75c004a9bb01c9ebf
+        dest-filename: node-headers.tar.gz
+        # Unfortunately we need a electron bin as well >.>
+      - type: file
+        url: https://github.com/electron/electron/releases/download/v39.2.7/electron-v39.2.7-linux-x64.zip
+        sha256: 2f5285ef563dca154aa247696dddef545d3d895dd9b227ed423ea0d43737c22c
+        dest-filename: electron-v39.2.7-linux-x64.zip
+        # Manually packed cargo sources (rust)
+      - cargo-sources.json
+      - type: file
+        url: https://github.com/rustwasm/wasm-pack/releases/download/v0.13.1/wasm-pack-v0.13.1-x86_64-unknown-linux-musl.tar.gz
+        sha256: c539d91ccab2591a7e975bcf82c82e1911b03335c80aa83d67ad25ed2ad06539
+        dest-filename: wasm-pack.tar.gz
+      - type: archive
+        url: https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.106/wasm-bindgen-0.2.106-x86_64-unknown-linux-musl.tar.gz
+        sha256: 3f3e7ae0c0a7448fcb00e9fc284477e0315ac0f1ff8328f32f6bf9ac7fe4b02c
+        strip-components: 1
+        dest: wasm-bindgen-dist
+      - type: archive
+        # Go module cache (created with: go mod download && tar -czf go-module-cache.tar.gz -C "$GOPATH/pkg/mod/cache" download)
+        path: go-module-cache.tar.gz
+        dest: go-module-cache
       - type: file
         path: app.fluxer.Fluxer.svg
       - type: file
@@ -34,11 +105,36 @@ modules:
         path: app.fluxer.Fluxer.metainfo.xml
       - type: file
         path: app.fluxer.Fluxer.sh
-    buildsystem: simple
     build-commands:
-      - cp -r fluxer ${FLATPAK_DEST}/fluxer
-      # Inject the correct Flatpak App ID directly into the Electron archive:
-      - patch-desktop-filename ${FLATPAK_DEST}/fluxer/resources/app.asar
+      - mkdir -p /app/bin
+      - install -Dm755 pnpm-binary /app/bin/pnpm
+      - mkdir -p electron-cache
+      - cp electron-v39.2.7-linux-x64.zip electron-cache
+      - tar -xf wasm-pack.tar.gz
+      - install -Dm755 wasm-pack-v0.13.1-x86_64-unknown-linux-musl/wasm-pack /app/bin/wasm-pack
+      - install -Dm755 wasm-bindgen-dist/wasm-bindgen /app/bin/wasm-bindgen
+
+      - printf '\n[package.metadata.wasm-pack.profile.release]\nwasm-opt = false\n' >> fluxer_app/crates/libfluxcore/Cargo.toml
+
+      - mkdir -p fluxer_app/crates/libfluxcore/.cargo
+      - echo '[source.crates-io]' > fluxer_app/crates/libfluxcore/.cargo/config.toml
+      - echo 'replace-with = "vendored-sources"' >> fluxer_app/crates/libfluxcore/.cargo/config.toml
+      - echo '[source.vendored-sources]' >> fluxer_app/crates/libfluxcore/.cargo/config.toml
+      - echo 'directory = "/run/build/fluxer/cargo/vendor"' >> fluxer_app/crates/libfluxcore/.cargo/config.toml
+
+      - pnpm install --offline --store-dir $PWD/pnpm-offline-cache
+      - cd fluxer_app && pnpm install --offline --store-dir $PWD/../pnpm-offline-cache
+      - rm -f fluxer_app/node_modules/.bin/wasm-pack
+      - ln -sf /app/bin/wasm-pack fluxer_app/node_modules/.bin/wasm-pack
+
+      - cd fluxer_app && pnpm exec lingui compile --strict
+      - cd fluxer_app && pnpm run build --offline --frozen-lockfile
+      - cd fluxer_app && pnpm electron:compile
+      - cd fluxer_app && pnpm exec electron-builder --linux --dir --config electron-builder.config.cjs
+
+      - mkdir -p ${FLATPAK_DEST}/fluxer
+      - cp -a fluxer_app/dist-electron/linux-unpacked/* ${FLATPAK_DEST}/fluxer/
+
       - install -Dm755 ${FLATPAK_ID}.sh ${FLATPAK_DEST}/bin/${FLATPAK_ID}
       - install -Dm644 ${FLATPAK_ID}.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - install -Dm644 ${FLATPAK_ID}.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml

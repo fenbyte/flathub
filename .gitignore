@@ -1,0 +1,8 @@
+# Large pre-packaged dependency bundles (regenerate locally before building)
+pnpm-offline-store.tar.gz
+go-module-cache.tar.gz
+cargo-sources.json
+
+# Flatpak build artifacts
+.flatpak-builder/
+build/
